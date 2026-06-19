@@ -1,0 +1,15 @@
+{
+  "pages": [
+    "pages/index/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "魔法少女的逆转裁判",
+    "navigationBarBackgroundColor": "#b7e8ff",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f5fbff",
+    "backgroundTextStyle": "light",
+    "pageOrientation": "landscape"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

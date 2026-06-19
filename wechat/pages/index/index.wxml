@@ -1,0 +1,298 @@
+<view class="page {{courtMode ? 'court-' + courtMode : ''}}">
+
+  <!-- 预加载遮罩 -->
+  <view class="loading-mask" wx:if="{{isLoading}}">
+    <view class="loading-content">
+      <view class="loading-text">{{loadText}}</view>
+      <progress-bar wx:if="{{!loadError}}" percent="{{loadProgress}}"></progress-bar>
+      <view class="progress-bar" wx:if="{{!loadError}}">
+        <view class="progress-fill" style="width: {{loadProgress}}%"></view>
+      </view>
+      <view class="loading-percent" wx:if="{{!loadError}}">{{loadProgress}}%</view>
+      <button wx:if="{{loadError}}" bindtap="retryPreload" class="loading-btn">重新加载</button>
+    </view>
+  </view>
+
+  <!-- 背景图（无视频时使用）
+       court=left/right 时用 CSS background-position 控制对齐 -->
+  <view class="bg-wrap" wx:if="{{!current.bgVideo}}">
+    <view class="bg bg-view" style="background-image: url({{current.bg}}); background-position: {{bgPositionX}} {{bgPositionY}}; background-size: {{bgSize}};"></view>
+  </view>
+
+  <!-- 视频背景（有视频时使用） -->
+  <video wx:else
+    id="bgVideo"
+    class="bg"
+    src="{{currentVideoSrc}}"
+    poster="{{currentVideoPoster}}"
+    autoplay="{{false}}"
+    loop="{{currentVideoLoop}}"
+    muted="{{false}}"
+    object-fit="{{current.bgVideoMode || 'cover'}}"
+    controls="{{false}}"
+    show-fullscreen-btn="{{false}}"
+    show-play-btn="{{false}}"
+    show-center-play-btn="{{false}}"
+    bindloadedmetadata="onVideoLoaded"
+    binderror="onVideoError"
+    bindended="onVideoEnded"
+    bindtap="onVideoTap">
+  </video>
+
+  <!-- 暗场渐变遮罩层 -->
+  <view class="dark-mask" style="opacity: {{darkMaskOpacity}}; {{darkMaskTransition}};"></view>
+
+  <!-- 透明点击层（用于无对话框时点击跳过） -->
+  <view class="fullscreen-click-layer" catchtap="onDialogTap"></view>
+
+  <!-- 桌子图层（z-index 在角色上方） -->
+  <view class="table-wrap" wx:if="{{tableImageSrc}}">
+    <image class="table-image"
+           src="{{tableImageSrc}}"
+           mode="{{courtMode === 'left' || courtMode === 'right' ? 'heightFix' : 'scaleToFill'}}"
+           style="{{tableImageStyle}}">
+    </image>
+  </view>
+
+  <!-- 顶部功能栏 -->
+  <view class="top-bar">
+    <button class="top-btn" bindtap="toggleAuto">{{autoPlay ? '关闭自动' : '自动播放'}}</button>
+    <button class="top-btn" bindtap="showHistory">{{historyBtnText}}</button>
+    <button class="top-btn" bindtap="showSavePoints">{{savePointBtnText}}</button>
+    <button class="top-btn" wx:if="{{!current.judge}}" bindtap="showEncyclopedia">图鉴</button>
+    <button class="top-btn" wx:if="{{current.judge}}" bindtap="showPresentPanel">出示</button>
+    <button class="top-btn" wx:if="{{current.judge}}" bindtap="askQuestion">追问</button>
+  </view>
+
+  <!-- 多角色立绘区域 -->
+  <view class="character-wrap">
+    <block wx:for="{{characterList}}" wx:key="id">
+      <image wx:if="{{item.src}}"
+        class="character {{item.animClass}}"
+        src="{{item.src}}"
+        mode="scaleToFill"
+        style="left: {{item.left}}%; transform: translateX(-50%); {{item.sizeStyle}}"
+        bindload="onCharacterLoad"
+        data-index="{{index}}"
+        bindanimationend="onCharacterAnimEnd">
+      </image>
+    </block>
+  </view>
+
+  <!-- 底部对话框区域 -->
+  <view class="dialog-area" wx:if="{{current.text && current.text !== ''}}" catchtap="onDialogTap">
+    <view class="name-bar" wx:if="{{current.speaker}}">{{current.speaker}}</view>
+    <view class="dialog-box" catchtap="onDialogTap">
+      <view class="content {{current.judge ? 'judge-text' : ''}}">{{displayText}}</view>
+      <view class="hint" wx:if="{{showHint && !isTyping && !showObjection}}">▷</view>
+    </view>
+  </view>
+
+  <!-- 分支选项面板 -->
+  <view class="choice-panel" wx:if="{{showChoices}}">
+    <block wx:for="{{current.choices}}" wx:key="index">
+      <button class="choice-btn" bindtap="onChoose" data-next="{{item.next}}" data-effect="{{item.effect}}" data-text="{{item.text}}">{{item.text}}</button>
+    </block>
+  </view>
+
+  <!-- 结局面板 -->
+  <view class="ending-panel" wx:if="{{current.isEnding}}">
+    <view class="ending-title">{{current.endingTitle || '结局'}}</view>
+    <text class="ending-text" wx:if="{{current.endingText}}">{{current.endingText}}</text>
+    <view class="ending-subtitle" wx:else>— 完 —</view>
+    <view class="ending-divider"></view>
+    <button class="ending-btn load-btn" bindtap="onLoadGame">读档</button>
+    <button class="ending-btn restart-btn" bindtap="onRestart">重新开始</button>
+  </view>
+
+  <!-- 历史记录浮层 -->
+  <view class="history-mask" wx:if="{{showHistory}}" bindtap="hideHistory">
+    <view class="history-container" catchtap="stopPropagation">
+      <view class="history-header">
+        <text>对话历史</text>
+        <view class="history-close" bindtap="hideHistory">✕</view>
+      </view>
+      <scroll-view class="history-list" scroll-y scroll-into-view="{{historyScrollIntoView}}" scroll-with-animation="{{true}}">
+        <block wx:for="{{historyList}}" wx:key="index">
+          <view id="history-item-{{index}}" class="history-item">
+            <text class="history-speaker">{{item.speaker || ''}}</text>
+            <text class="history-content">{{item.content}}</text>
+          </view>
+        </block>
+        <view wx:if="{{historyList.length === 0}}" class="history-empty">暂无历史记录</view>
+      </scroll-view>
+    </view>
+  </view>
+
+  <!-- 存档点警告浮层 -->
+  <view class="save-point-warning-mask" wx:if="{{showSavePointWarning}}" bindtap="cancelSavePointWarning">
+    <view class="save-point-warning-container" catchtap="stopPropagation">
+      <view class="save-point-warning-icon">⚠️</view>
+      <view class="save-point-warning-text">存档点功能并非为正常流程设计，除非你由于退出等原因丢失进度，否则不建议使用存档点功能！</view>
+      <view class="save-point-warning-btns">
+        <button class="save-point-warning-btn cancel" bindtap="cancelSavePointWarning">返回</button>
+        <button class="save-point-warning-btn confirm" bindtap="confirmSavePointWarning">我知道我在干什么</button>
+      </view>
+    </view>
+  </view>
+
+  <!-- 存档点浮层 -->
+  <view class="save-point-mask" wx:if="{{showSavePoints}}" bindtap="hideSavePoints">
+    <view class="save-point-container" catchtap="stopPropagation">
+      <view class="save-point-header">
+        <text>存档点</text>
+        <view class="save-point-close" bindtap="hideSavePoints">✕</view>
+      </view>
+      <scroll-view
+        class="save-point-list"
+        scroll-y="{{true}}"
+        scroll-into-view="{{savePointScrollIntoView}}"
+        scroll-with-animation="{{true}}"
+        enhanced="{{true}}">
+        <block wx:for="{{savePointList}}" wx:key="domId">
+          <view
+            id="{{item.domId}}"
+            class="save-point-item {{currentIndex === item.storyIndex ? 'active' : ''}} {{item.isSavePoint ? 'save-type' : ''}}"
+            bindtap="onSavePointTap"
+            data-index="{{item.storyIndex}}">
+            <view class="save-point-title-row">
+              <text class="save-point-title">{{item.title}}</text>
+              <text class="save-point-id">ID {{item.idText}}</text>
+            </view>
+            <text class="save-point-desc">{{item.desc}}</text>
+          </view>
+        </block>
+        <view wx:if="{{savePointList.length === 0}}" class="save-point-empty">暂无可跳转节点</view>
+      </scroll-view>
+    </view>
+  </view>
+
+  <!-- 图鉴/出示浮层 -->
+  <view class="encyclopedia-mask" wx:if="{{showEncyclopedia}}" catchtap="onMaskTap">
+    
+    <view wx:if="{{forcedInteractiveMode}}" class="forced-present-container" catchtap="stopPropagation">
+      <scroll-view scroll-y="{{true}}" class="forced-scroll-view">
+        <view class="forced-image-wrapper">
+          <image id="forcedImage"
+            class="forced-image"
+            src="{{forcedImageSrc}}"
+            mode="{{forcedImageMode}}"
+            style="{{forcedImageStyle}}"
+            bindtap="onForcedImageTap"
+            bindtouchmove="onForcedImageTouchMove"
+            bindload="onForcedImageLoad"
+            binderror="onForcedImageError"
+          ></image>
+        </view>
+      </scroll-view>
+      <view class="forced-submit-float" bindtap="presentSubmitForced">出示</view>
+      <view class="forced-rect-border" style="{{forcedRectStyle}}"></view>
+      <view class="forced-mark-dot" style="{{forcedMarkStyle}}"></view>
+    </view>
+
+    <!-- 普通百科/出示容器（强制模式时不显示） -->
+    <view wx:else class="encyclopedia-container" catchtap="stopPropagation">
+      <!-- 返回按钮（仅在非强制出示时显示） -->
+      <view class="ency-back-btn" wx:if="{{!presentForced}}" catchtap="hideEncyclopedia">←</view>
+
+      <!-- 右侧标签栏（出示模式下只显示指定类别） -->
+      <view class="ency-tabs">
+        <block wx:if="{{!presentMode}}">
+          <view class="ency-tab {{encyActiveTab === 'evidence' ? 'active' : ''}}" bindtap="switchEncyTab" data-tab="evidence">证物</view>
+          <view class="ency-tab {{encyActiveTab === 'witness' ? 'active' : ''}}" bindtap="switchEncyTab" data-tab="witness">证人</view>
+          <view class="ency-tab {{encyActiveTab === 'map' ? 'active' : ''}}" bindtap="switchEncyTab" data-tab="map">地图</view>
+          <view class="ency-tab {{encyActiveTab === 'rule' ? 'active' : ''}}" bindtap="switchEncyTab" data-tab="rule">规定</view>
+          <view class="ency-tab {{encyActiveTab === 'record' ? 'active' : ''}}" bindtap="switchEncyTab" data-tab="record">记录</view>
+        </block>
+        <block wx:else>
+          <!-- 出示模式下只显示可出示的类别 -->
+          <view class="ency-tab {{encyActiveTab === 'evidence' ? 'active' : ''}}" bindtap="switchEncyTab" data-tab="evidence">证物</view>
+          <view class="ency-tab {{encyActiveTab === 'witness' ? 'active' : ''}}" bindtap="switchEncyTab" data-tab="witness">证人</view>
+          <view class="ency-tab {{encyActiveTab === 'map' ? 'active' : ''}}" bindtap="switchEncyTab" data-tab="map">地图</view>
+          <view class="ency-tab {{encyActiveTab === 'rule' ? 'active' : ''}}" bindtap="switchEncyTab" data-tab="rule">规定</view>
+          <view class="ency-tab {{encyActiveTab === 'record' ? 'active' : ''}}" bindtap="switchEncyTab" data-tab="record">记录</view>
+        </block>
+      </view>
+
+      <view class="ency-main">
+        <view class="ency-detail-area">
+          <!-- 地图模式 -->
+          <view class="ency-map-area" wx:if="{{encyActiveTab === 'map'}}">
+            <image class="ency-map-img" src="{{encySelectedItem.details}}" mode="aspectFit"></image>
+            <view wx:if="{{!encySelectedItem.details}}" class="ency-map-placeholder">暂无地图图片</view>
+          </view>
+
+          <!-- 非地图模式：左右分栏 -->
+          <view class="ency-detail-row" wx:else>
+            <view class="ency-detail-left">
+              <view class="ency-detail-profile" wx:if="{{encySelectedItem.profileLocal}}">
+                <image class="ency-profile-img" src="{{encySelectedItem.profileLocal}}" mode="aspectFill" bindtap="onProfileImageTap"></image>
+              </view>
+              <view class="ency-detail-name-text">{{encySelectedItem.name || '请选择一项'}}</view>
+              <view wx:if="{{presentMode}}" class="ency-detail-present-btn" catchtap="presentSubmit">
+                <text class="present-btn-text">出示</text>
+              </view>
+            </view>
+            <view class="ency-detail-right">
+              <scroll-view scroll-y class="ency-detail-right-scroll">
+                <view class="ency-detail-desc-text">{{encySelectedItem.desc || '暂无描述'}}</view>
+              </scroll-view>
+            </view>
+          </view>
+
+          <!-- 地图出示按钮（浮动） -->
+          <view wx:if="{{presentMode && encyActiveTab === 'map' && encySelectedItem.id}}" class="map-present-float-btn" catchtap="presentSubmit">
+            <text class="present-float-text">出示</text>
+          </view>
+        </view>
+
+        <view class="ency-list-area">
+          <block wx:if="{{encyData[encyActiveTab].length > 0}}">
+            <view class="list-arrow left-arrow" catchtap="doNothing">◀</view>
+            <view class="list-arrow right-arrow" catchtap="doNothing">▶</view>
+            <scroll-view scroll-x class="ency-list-scroll" enhanced="{{true}}" show-scrollbar="{{false}}" scroll-with-animation="{{true}}">
+              <view class="ency-list-wrapper">
+                <block wx:for="{{encyData[encyActiveTab]}}" wx:key="id">
+                  <view class="ency-list-item icon-mode {{encySelectedId === item.id ? 'active' : ''}}" bindtap="selectEncyItem" data-id="{{item.id}}">
+                    <image wx:if="{{encyActiveTab === 'evidence' || encyActiveTab === 'witness'}}" class="list-item-icon" src="{{item.profileLocal || item.profile}}" mode="aspectFill"></image>
+                    <text wx:else class="list-item-name">{{item.scrollName}}</text>
+                  </view>
+                </block>
+              </view>
+            </scroll-view>
+          </block>
+          <view wx:else class="ency-list-empty">暂无内容</view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 详情浮层（证物详情多页展示） -->
+  <view class="detail-mask" wx:if="{{showDetailPopup}}" catchtap="closeDetailPopup">
+    <view class="detail-container" catchtap="stopPropagation">
+      <view class="detail-back-btn" catchtap="closeDetailPopup">←</view>
+      <scroll-view class="detail-content" scroll-y wx:if="{{!detailIsImage}}">
+        <text class="detail-text">{{detailPages[detailCurrentPage] || '无内容'}}</text>
+      </scroll-view>
+      <view class="detail-image-container" wx:if="{{detailIsImage}}">
+        <image class="detail-image" src="{{detailPages}}" mode="aspectFit"></image>
+      </view>
+      <view class="detail-page-indicator" wx:if="{{!detailIsImage && detailPages.length > 1}}">
+        {{detailCurrentPage+1}} / {{detailPages.length}}
+      </view>
+      <block wx:if="{{!detailIsImage && detailPages.length > 1}}">
+        <view class="detail-nav-btn detail-prev-btn {{detailCurrentPage === 0 ? 'disabled' : ''}}" catchtap="onDetailPrev">◀</view>
+        <view class="detail-nav-btn detail-next-btn {{detailCurrentPage === detailPages.length-1 ? 'disabled' : ''}}" catchtap="onDetailNext">▶</view>
+      </block>
+    </view>
+  </view>
+
+  <!-- 异议图片浮层 -->
+  <view class="objection-mask" wx:if="{{showObjection}}" catchtap="preventTap">
+    <image class="objection-img {{objectionAnimClass}}" 
+           src="{{objectionImg}}" 
+           mode="aspectFit"
+           style="width: 95vw; height: 90vh;"></image>
+  </view>
+
+</view>
