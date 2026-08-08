@@ -54,16 +54,21 @@ python verify.py        # 无头全剧情自动验证（43 项检查 + 截图）
 #### API（python/api.py）
 
 零依赖 stdlib HTTP JSON API，所有坐标均为 1280x720 逻辑画布坐标。
-所有输入通过真实 pygame 事件管线注入（点击 = 真鼠标点击）：
+所有输入通过真实 pygame 事件管线注入（点击 = 真鼠标点击）。
+浏览器打开 `http://127.0.0.1:8765/` 可直接用**遥控台**（实时画面+控制）。
 
 | 端点 | 说明 |
 |------|------|
-| `GET /api/state` | 完整状态快照：当前节点、打字进度、选项 rect、顶栏按钮 rect、角色 rect、图鉴/历史/存档点/结局面板所有可点击元素 rect、state 变量 |
+| `GET /` | HTML 遥控台（截图/状态/按钮/选项/跳转/自动游玩） |
+| `GET /api/state` | 完整状态快照：当前节点、打字进度、选项 rect、顶栏按钮 rect、角色 rect、图鉴/历史/存档点/结局面板所有可点击元素 rect、state 变量、seq 帧序号 |
+| `GET /api/poll?since=N&timeout=T` | 长轮询：seq 变化即返回（遥控台实时更新用） |
 | `POST /api/advance` | 点对话框（完成打字 / 下一节点） |
 | `POST /api/click` | `{"x":..,"y":..}` 真实鼠标点击 |
 | `POST /api/choose` | `{"index":0}` 点选项按钮 |
 | `POST /api/button` | `{"action":"auto\|history\|savepoints\|encyclopedia\|present\|ask"}` |
 | `POST /api/jump` | `{"node_id":"3.13"}` 跳转节点 |
+| `POST /api/run` | `{"actions":[{action,data},...]}` 批量动作（一次往返执行一串） |
+| `POST /api/autoplay` | `{"on":true,"strategy":"first\|random","interval":0.25}` 让游戏自己玩（自动跳过打字/选选项/证言循环逃逸） |
 | `POST /api/restart` / `load` / `save` / `quit` | 控制 |
 | `GET /api/screenshot.png` | 当前帧 PNG |
 | `GET /api/nodes` | 全部节点索引 |

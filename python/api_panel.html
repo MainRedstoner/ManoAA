@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>ManoAA 遥控台</title>
+<style>
+  :root {
+    --pink: #ff85a2; --pink-light: #ffc8d6; --pink-text: #fff0f5;
+    --bg: #12121c; --panel: #1c1c2a; --border: rgba(255,133,162,.35);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: #e8e8ee; font-family: "Microsoft YaHei", sans-serif; padding: 16px; }
+  h1 { font-size: 18px; color: var(--pink-light); margin-bottom: 12px; letter-spacing: 2px; }
+  .layout { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+  .stage { flex: 1 1 640px; min-width: 400px; }
+  .stage img { width: 100%; max-width: 960px; border-radius: 10px; border: 1px solid var(--border); display: block; }
+  .panel { flex: 0 1 420px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+  .panel h2 { font-size: 13px; color: var(--pink-light); margin: 10px 0 6px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0; }
+  button {
+    background: rgba(255,255,255,.07); border: 1px solid var(--border); color: var(--pink-text);
+    border-radius: 18px; padding: 7px 14px; font-size: 13px; cursor: pointer; transition: all .15s;
+  }
+  button:hover { background: rgba(255,133,162,.35); transform: scale(1.03); }
+  button.primary { background: var(--pink-light); color: #2c2c38; font-weight: bold; }
+  button.primary:hover { background: #ffb3c6; }
+  button.choice { width: 100%; text-align: left; margin: 3px 0; border-radius: 10px; }
+  input, select {
+    background: #14141f; border: 1px solid var(--border); color: #eee; border-radius: 8px;
+    padding: 6px 10px; font-size: 13px; outline: none;
+  }
+  .meta { font-size: 12px; color: #bbb; line-height: 1.7; }
+  .meta b { color: var(--pink-light); }
+  .meta .node-id { color: #7fdcff; }
+  #state-json { background: #101018; border: 1px solid #2a2a3a; border-radius: 8px; padding: 8px;
+    font-family: Consolas, monospace; font-size: 11px; max-height: 160px; overflow: auto; white-space: pre-wrap; }
+  .badge { display: inline-block; background: rgba(255,133,162,.2); color: var(--pink-light);
+    border-radius: 10px; padding: 1px 8px; font-size: 11px; margin-left: 6px; }
+  #toast { position: fixed; bottom: 16px; right: 16px; background: #2a2a3a; border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 16px; font-size: 13px; opacity: 0; transition: opacity .3s; }
+</style>
+</head>
+<body>
+<h1>🎮 ManoAA 遥控台 <span class="badge" id="conn-badge">连接中…</span></h1>
+<div class="layout">
+  <div class="stage">
+    <img id="screen" src="/api/screenshot.png" alt="画面">
+  </div>
+  <div class="panel">
+    <h2>当前节点</h2>
+    <div class="meta">
+      <span class="node-id" id="node-id">—</span>
+      <span id="speaker"></span><br>
+      <span id="text"></span>
+      <div id="typing"></div>
+    </div>
+
+    <h2>操作</h2>
+    <div class="row">
+      <button class="primary" onclick="api('advance')">推进 ▸</button>
+      <button onclick="api('restart')">重新开始</button>
+      <button onclick="api('save')">手动存档</button>
+      <button onclick="api('load')">读档</button>
+    </div>
+
+    <h2>选项</h2>
+    <div id="choices"><span class="meta">（无）</span></div>
+
+    <h2>顶栏</h2>
+    <div class="row" id="top-buttons"></div>
+
+    <h2>自动游玩</h2>
+    <div class="row">
+      <button id="ap-toggle" class="primary" onclick="toggleAutoplay()">开始自动游玩</button>
+      <select id="ap-strategy">
+        <option value="first">选第一个</option>
+        <option value="random">随机选</option>
+      </select>
+    </div>
+
+    <h2>跳转节点</h2>
+    <div class="row">
+      <input id="jump-input" placeholder="节点 ID，如 3.13" list="node-list">
+      <datalist id="node-list"></datalist>
+      <button onclick="doJump()">跳转</button>
+      <button onclick="pickRandomNode()">随机</button>
+    </div>
+
+    <h2>state 变量</h2>
+    <div id="state-json">{}</div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+let seq = 0;
+let autoplayOn = false;
+
+async function api(action, data) {
+  try {
+    const r = await fetch('/api/' + action, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(data || {})
+    });
+    const j = await r.json();
+    if (!j.ok) toast('失败: ' + action);
+  } catch (e) { toast('请求失败: ' + e.message); }
+}
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.opacity = 1;
+  setTimeout(() => t.style.opacity = 0, 1500);
+}
+
+function render(st) {
+  const n = st.node || {};
+  document.getElementById('node-id').textContent = n.id || '—';
+  document.getElementById('speaker').textContent = n.speaker ? ' · ' + n.speaker : '';
+  document.getElementById('text').textContent = (n.text || '') + (st.typing.display_text ? '\n▸ ' + st.typing.display_text : '');
+  const ty = document.getElementById('typing');
+  ty.innerHTML = st.typing.is_typing
+    ? '<span style="color:#7fdcff">打字中 ' + st.typing.progress + '/' + (n.text || '').length + '</span>'
+    : (st.typing.show_hint ? '<span style="color:var(--pink)">点击推进 ▷</span>' : '');
+
+  const ch = document.getElementById('choices');
+  if (st.choices && st.choices.length) {
+    ch.innerHTML = '';
+    st.choices.forEach((c, i) => {
+      const b = document.createElement('button');
+      b.className = 'choice';
+      b.textContent = (i + 1) + '. ' + c.text;
+      b.onclick = () => api('choose', {index: i});
+      ch.appendChild(b);
+    });
+  } else {
+    ch.innerHTML = '<span class="meta">（无）</span>';
+  }
+
+  const tb = document.getElementById('top-buttons');
+  tb.innerHTML = '';
+  (st.top_buttons || []).forEach(b => {
+    const btn = document.createElement('button');
+    btn.textContent = b.label;
+    btn.onclick = () => api('button', {action: b.action});
+    tb.appendChild(btn);
+  });
+
+  document.getElementById('state-json').textContent = JSON.stringify(st.state, null, 1);
+}
+
+async function poll() {
+  try {
+    const r = await fetch('/api/poll?since=' + seq + '&timeout=1.5');
+    const j = await r.json();
+    if (j.ok) {
+      document.getElementById('conn-badge').textContent = '在线';
+      document.getElementById('conn-badge').style.background = 'rgba(120,220,140,.2)';
+      seq = j.seq;
+      render(j.state);
+    }
+  } catch (e) {
+    document.getElementById('conn-badge').textContent = '离线';
+    document.getElementById('conn-badge').style.background = 'rgba(255,80,80,.25)';
+  }
+}
+
+function refreshShot() {
+  const img = document.getElementById('screen');
+  img.src = '/api/screenshot.png?t=' + Date.now();
+}
+
+function toggleAutoplay() {
+  autoplayOn = !autoplayOn;
+  const btn = document.getElementById('ap-toggle');
+  const strategy = document.getElementById('ap-strategy').value;
+  btn.textContent = autoplayOn ? '停止自动游玩' : '开始自动游玩';
+  api('autoplay', {on: autoplayOn, strategy: strategy});
+}
+
+function doJump() {
+  const v = document.getElementById('jump-input').value.trim();
+  if (v) api('jump', {node_id: v});
+}
+
+async function pickRandomNode() {
+  try {
+    const r = await fetch('/api/nodes');
+    const nodes = Object.keys(await r.json());
+    const v = nodes[Math.floor(Math.random() * nodes.length)];
+    document.getElementById('jump-input').value = v;
+    api('jump', {node_id: v});
+  } catch (e) {}
+}
+
+async function loadNodeList() {
+  try {
+    const r = await fetch('/api/nodes');
+    const nodes = await r.json();
+    const dl = document.getElementById('node-list');
+    dl.innerHTML = '';
+    Object.keys(nodes).forEach(id => {
+      const o = document.createElement('option');
+      o.value = id;
+      dl.appendChild(o);
+    });
+  } catch (e) {}
+}
+
+setInterval(poll, 1000);
+setInterval(refreshShot, 2000);
+loadNodeList();
+poll();
+</script>
+</body>
+</html>

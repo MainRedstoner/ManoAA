@@ -2,5 +2,16 @@ Gresource/
 backups/
 gresource-temp/
 saves/
-python/
 wechat/images/
+IDEA.md
+
+# Python
+__pycache__/
+*.py[cod]
+
+# 验证截图产物（python verify.py 生成，可随时重跑）
+python/verify_shots/
+
+# 冗余音频格式：story 数据只引用 ogg，m4a 是转码遗留的双份
+python/assets/audio/**/m4a/
+
